@@ -16,9 +16,20 @@ import numpy as np
 import sys
 DEVICE = torch.device("cuda",int(sys.argv[2]))
 
-SEED=1234
+SEEDS = [12031212,1234,5845389,23423,343495,2024,3842834,23402304]
+
+SEED=SEEDS[int(sys.argv[3])]
+
+
 np.random.seed(SEED)
 torch.manual_seed(SEED)
+
+import os
+os.environ['PYTHONHASHSEED']=str(SEED)
+
+import random
+random.seed(SEED)
+
 
 class Net(nn.Module):
     def __init__(self):
@@ -37,17 +48,18 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
         logits = self.fc2(x)
         return logits
-    
 def train(lr,epochs,train_loader,val_loader,name_model,momentum=0.9,weight_decay=1e-3):
     metric = AUROC(task='multiclass', num_classes=10) 
-    softmax = nn.Softmax(dim=1)
+    # softmax = nn.Softmax(dim=1)
     
     training_accuracy = Accuracy(task='multiclass', num_classes=10).to(DEVICE)
     val_accuracy = Accuracy(task='multiclass', num_classes=10).to(DEVICE)
 
     torch.manual_seed(SEED)
 
-    for training_ind in range(10):
+    for training_ind in [sys.argv[3]]:
+        torch.cuda.empty_cache()
+
         model=Net()
         model.to(DEVICE)
         criterion = nn.CrossEntropyLoss()
@@ -55,12 +67,6 @@ def train(lr,epochs,train_loader,val_loader,name_model,momentum=0.9,weight_decay
         # Anders et. al uses mainly AdaDelta but also SGD in one section
 #         optimizer = optim.SGD(model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
         optimizer = optim.Adadelta(model.parameters(), lr=lr, weight_decay=weight_decay)
-
-
-        loss_list_train=[]
-        loss_list_val=[]
-        acc_list_train=[]
-        acc_list_val=[]
 
         min_loss = 100000000
     #     last_loss = 1000000000
@@ -102,6 +108,8 @@ def train(lr,epochs,train_loader,val_loader,name_model,momentum=0.9,weight_decay
                 
                 auroc_train.append(metric(outputs,labels.to(torch.int32)))
 
+                del inputs, labels, outputs, loss, predicted, data
+
             auroc_train = sum(auroc_train)/len(auroc_train)
 
             for i_v, data_val in enumerate(val_loader):
@@ -121,6 +129,8 @@ def train(lr,epochs,train_loader,val_loader,name_model,momentum=0.9,weight_decay
 
                 auroc_val.append(metric(outputs_val,labels_val.to(torch.int32)))
 
+                del inputs_val, labels_val, outputs_val, loss_val, predicted_val, data_val
+
 #                 pred_val=np.concatenate((pred_val, softmax(outputs_val)[:,1].cpu().detach().numpy()))
 #                 true_labels_val=np.concatenate((true_labels_val, labels_val.cpu().detach().numpy()))
             auroc_val = sum(auroc_val)/len(auroc_val)
@@ -131,6 +141,7 @@ def train(lr,epochs,train_loader,val_loader,name_model,momentum=0.9,weight_decay
                 save_model.load_state_dict(model.state_dict()) # copy weights and stuff
 
                 torch.save(save_model.state_dict(), f'{str(name_model)}_{training_ind}.pt')
+                del save_model
 
 #             auroc_val=metric(torch.tensor(pred_val),torch.tensor(true_labels_val).to(torch.int32))
 
@@ -143,33 +154,41 @@ def train(lr,epochs,train_loader,val_loader,name_model,momentum=0.9,weight_decay
 
             epoch_loss = 0.0
             epoch_loss_val=0.0
+            del epoch_loss_val, auroc_train, auroc_val, epoch_acc, epoch_acc_val
             torch.cuda.empty_cache()
 
+            
+            
+        del model, optimizer, criterion
         print('Finished Training')
         print()
         print('\t \t *******************')
         print()
         
-        torch.save(save_model.state_dict(), f'{str(name_model)}_{training_ind}.pt')
-        
+        # torch.save(save_model.state_dict(), f'{str(name_model)}_{training_ind}.pt')
+        torch.cuda.empty_cache()
+    del train_loader, val_loader
 def main():
     with open(f'mnist_{sys.argv[1]}_data.pkl', 'rb') as f:
         dataset = pickle.load(f)
 
-    [(x_train, y_train, _), (x_val, y_val, _), (_, _, _)] = dataset
+    if sys.argv[1] == 'no_col':
+        [(x_train,y_train),(x_val,y_val),(_,_)] = dataset
+    else:
+        [(x_train, y_train, _), (x_val, y_val, _), (_, _, _)] = dataset
 
     lr = 0.005
     epochs = 50
     momentum = 0.9
     weight_decay = 1e-3
-    batch_size = 512
+    batch_size = 32
 
     train_loader = DataLoader(TensorDataset(torch.tensor(x_train.transpose(0,3,1,2)), torch.tensor(y_train)), batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(TensorDataset(torch.tensor(x_val.transpose(0,3,1,2)), torch.tensor(y_val)), batch_size=batch_size, shuffle=True)
 
 
 
-    models = train(lr,epochs,train_loader,val_loader,f'mnist_{sys.argv[1]}',momentum=momentum,weight_decay=weight_decay)
+    train(lr,epochs,train_loader,val_loader,f'mnist_{sys.argv[1]}',momentum=momentum,weight_decay=weight_decay)
 
 if __name__ == '__main__':
     main()

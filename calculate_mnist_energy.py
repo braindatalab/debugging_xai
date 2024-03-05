@@ -20,7 +20,9 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 from PIL import Image 
 
-SEED=1234
+SEEDS = [12031212,1234,5845389,23423,343495,2024,3842834,23402304]
+SEED=SEEDS[int(sys.argv[1])]
+
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
@@ -214,10 +216,10 @@ for model_name, model_energies in energies.items():
                 data = x_batch[j].reshape(1,3,28,28).to(torch.float32).to(DEVICE)
                 target = torch.tensor(test_labels[j]).to(torch.int16).to(DEVICE)
 
-                ig_att = IntegratedGradients(model).attribute(data, target=target).squeeze().cpu().detach().numpy().squeeze()
-                gradshap_att = GradientShap(model).attribute(data,target=target, baselines=torch.zeros(data.shape).to(DEVICE)).squeeze().cpu().detach().numpy().squeeze()
-                deconv_att = Deconvolution(model).attribute(data,target=target).squeeze().cpu().detach().numpy().squeeze()
-                lrp_att=LRP(model).attribute(data,target=target).squeeze().cpu().detach().numpy().squeeze()
+                ig_att = IntegratedGradients(model).attribute(data, target=target).cpu().detach().numpy().squeeze()
+                gradshap_att = GradientShap(model).attribute(data,target=target, baselines=torch.zeros(data.shape).to(DEVICE)).cpu().detach().numpy().squeeze()
+                deconv_att = Deconvolution(model).attribute(data,target=target).cpu().detach().numpy().squeeze()
+                lrp_att=LRP(model).attribute(data,target=target).cpu().detach().numpy().squeeze()
                 lrp_ab = lrp(data,model,target)
 
                 # attrs[models[i]]['deconv'].append(deconv_att)
