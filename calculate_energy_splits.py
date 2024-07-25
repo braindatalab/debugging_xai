@@ -10,6 +10,8 @@ import torch.nn.functional as F
 import random
 from PIL import Image 
 
+from scipy.ndimage import sobel, laplace
+
 SEEDS = [12031212,1234,5845389,23423,343495,2024,3842834,23402304,482347247,1029237127]
 
 SEED=SEEDS[int(sys.argv[1])] 
@@ -230,22 +232,13 @@ def load_trained(path):
     return model
 
 
-energy_water_conf={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
-energy_water_sup={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
-energy_water_no={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+energy_water_conf={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': [] }
+energy_water_sup={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
+energy_water_no={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
 
-energy_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
-energy_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
-energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
-
-# energy_water_conf={'lrp_ab': []}
-# energy_water_sup={'lrp_ab': []}
-# energy_water_no={'lrp_ab': []}
-
-# energy_no_water_conf={'lrp_ab': []}
-# energy_no_water_sup={'lrp_ab': []}
-# energy_no_water_no={'lrp_ab': []}
-
+energy_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
+energy_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
+energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
 
 # energy_water_conf_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
 # energy_water_sup_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
@@ -255,13 +248,27 @@ energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': 
 # energy_no_water_sup_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 # energy_no_water_no_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 
-model_conf=load_trained(f'./models/cnn_confounder_{split}_{model_ind}.pt').to(DEVICE).eval()
-model_sup=load_trained(f'./models/cnn_suppressor_{split}_{model_ind}.pt').to(DEVICE).eval()
-model_no=load_trained(f'./models/cnn_no_watermark_{split}_{model_ind}.pt').to(DEVICE).eval()
+model_conf=load_trained(f'./models/cnn_confounder_{split}_{model_ind}.pt').eval().to(DEVICE)
+model_sup=load_trained(f'./models/cnn_suppressor_{split}_{model_ind}.pt').eval().to(DEVICE)
+model_no=load_trained(f'./models/cnn_no_watermark_{split}_{model_ind}.pt').eval().to(DEVICE)
 
 folder=os.getcwd()+'/images'
 print(folder)
 t0=time.time()
+
+N_test = 1800
+
+wm_avg = np.zeros((N_test,3,128,128))
+no_wm_avg = np.zeros((N_test,3,128,128))
+
+for i in range(N_test):
+    wm_avg[i] = watermark_dataset[i][0]
+    no_wm_avg[i] = no_watermark_dataset[i][0]
+    
+wm_avg = np.mean(wm_avg, axis=0)
+no_wm_avg = np.mean(no_wm_avg, axis=0)
+
+rgb_weights = [0.2989, 0.5870, 0.1140]
 
 
 for i in range(len(watermark_dataset)):
@@ -319,10 +326,87 @@ for i in range(len(watermark_dataset)):
         # energy_no_water_sup_gt[method].append(energy(a_sup_nw_gt[method]))
         # energy_no_water_no_gt[method].append(energy(a_no_nw_gt[method]))
 
+    x_wm = energy(np.dot(w_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
+    x_no = energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
+
+    sample = w_image.copy().transpose(1,2,0) - wm_avg.transpose(1,2,0)
+    img_r = sample[:,:,0]
+    img_g = sample[:,:,1]
+    img_b = sample[:,:,2]
+    
+    lapl_wm = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
+    sob_wm = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
+
+    nw_image.append(energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights)))
+    
+    sample = nw_image.copy().transpose(1,2,0) - no_wm_avg.transpose(1,2,0)
+    img_r = sample[:,:,0]
+    img_g = sample[:,:,1]
+    img_b = sample[:,:,2]
+    
+    lapl_no = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
+    sob_no = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
+
+    res = {
+        'laplace': [lapl_wm, lapl_no],
+        'sobel': [sob_wm, sob_no],
+        'x': [x_wm, x_no]
+    }
+    
+    for baseline, results in res.items():
+        energy_water_conf[baseline].append(results[0])
+        energy_no_water_conf[baseline].append(results[1])
+
+        energy_water_sup[baseline].append(results[0])
+        energy_no_water_sup[baseline].append(results[1])
+
+        energy_water_no[baseline].append(results[0])
+        energy_no_water_no[baseline].append(results[1])
+
     if (i%100)==0:
         print(i, 'out of', len(watermark_dataset))
         print(time.time()-t0)
         # t0=time.time()
+
+
+
+for x, label in watermark_dataset:
+    
+    x_wm.append(energy(np.dot(x.copy().transpose(1,2,0)[...,:3], rgb_weights)))
+    
+    sample = x.copy().transpose(1,2,0) - wm_avg.transpose(1,2,0)
+    img_r = sample[:,:,0]
+    img_g = sample[:,:,1]
+    img_b = sample[:,:,2]
+    
+    lapl = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
+    sob = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
+    
+    lapl_wm.append(energy(lapl))
+    sob_wm.append(energy(sob))
+    
+lapl_no = []
+sob_no = []
+x_no = []
+
+for x, label in no_watermark_dataset:
+    
+    x_no.append(energy(np.dot(x.copy().transpose(1,2,0)[...,:3], rgb_weights)))
+    
+    sample = x.copy().transpose(1,2,0) - no_wm_avg.transpose(1,2,0)
+    img_r = sample[:,:,0]
+    img_g = sample[:,:,1]
+    img_b = sample[:,:,2]
+    
+    lapl = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
+    sob = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
+    
+    lapl_no.append(energy(lapl))
+    sob_no.append(energy(sob))
+       
+with open(f'energy_baselines_{split}.pickle', 'wb') as f:
+    pickle.dump([[lapl_no, lapl_wm], [sob_no, sob_wm], [x_no, x_wm]], f) 
+    
 
 
 with open(f'./energies/energy_water_conf_pred_lrp_{split}_{model_ind}.pickle', 'wb') as f:
