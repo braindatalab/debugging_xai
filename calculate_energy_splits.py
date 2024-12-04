@@ -28,7 +28,10 @@ random.seed(SEED)
 # if sys.argv[2] is not None:
 #     DEVICE = torch.device("cuda",int(sys.argv[2]))
 # else:
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+DEVICE = torch.device("cuda",2)
+
+# DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # DEVICE = 'cpu'
 
@@ -37,8 +40,8 @@ from captum.attr import IntegratedGradients, GradientShap, Deconvolution, LRP, L
 from zennit.composites import EpsilonAlpha2Beta1
 
 split = sys.argv[1]
-model_ind = sys.argv[2]
-print(f'SPLIT: {split} MODEL IND: {model_ind}')
+# model_ind = sys.argv[2]
+print(f'SPLIT: {split}')
 
 class Net(nn.Module):
     def __init__(self):
@@ -228,17 +231,17 @@ def energy(att):
 
 def load_trained(path):
     model = Net()
-    model.load_state_dict(torch.load(path,map_location=DEVICE))
+    model.load_state_dict(torch.load(path, map_location=DEVICE))
     return model
 
 
-energy_water_conf={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': [] }
-energy_water_sup={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
-energy_water_no={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
+energy_water_conf={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+energy_water_sup={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+energy_water_no={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
 
-energy_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
-energy_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
-energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [], 'laplace': [], 'sobel': [], 'x': []}
+energy_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [],}
+energy_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
+energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 
 # energy_water_conf_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
 # energy_water_sup_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
@@ -248,9 +251,6 @@ energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': 
 # energy_no_water_sup_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 # energy_no_water_no_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 
-model_conf=load_trained(f'./models/cnn_confounder_{split}_{model_ind}.pt').eval().to(DEVICE)
-model_sup=load_trained(f'./models/cnn_suppressor_{split}_{model_ind}.pt').eval().to(DEVICE)
-model_no=load_trained(f'./models/cnn_no_watermark_{split}_{model_ind}.pt').eval().to(DEVICE)
 
 folder=os.getcwd()+'/images'
 print(folder)
@@ -271,156 +271,132 @@ no_wm_avg = np.mean(no_wm_avg, axis=0)
 rgb_weights = [0.2989, 0.5870, 0.1140]
 
 
-for i in range(len(watermark_dataset)):
-    w_image = watermark_dataset[i]
-    w_target=w_image[1]
-    w_image=w_image[0]
+res = {
+    'laplace': [[], []],
+    'sobel': [[], []],
+    'x': [[], []]
+}
+
+
+for model_ind in range(5):
     
-    w_example=torch.tensor(w_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
+    model_conf=load_trained(f'./models/cnn_confounder_{split}_{model_ind}.pt').eval().to(DEVICE)
+    model_sup=load_trained(f'./models/cnn_suppressor_{split}_{model_ind}.pt').eval().to(DEVICE)
+    model_no=load_trained(f'./models/cnn_no_watermark_{split}_{model_ind}.pt').eval().to(DEVICE)
 
-    w_target_conf = torch.max(model_conf(w_example), 1)[1].to(int)
-    w_target_sup = torch.max(model_sup(w_example), 1)[1].to(int)
-    w_target_no = torch.max(model_no(w_example), 1)[1].to(int)
+    for i in range(len(watermark_dataset)):
+        w_image = watermark_dataset[i]
+        w_target=w_image[1]
+        w_image=w_image[0]
+        
+        w_example=torch.tensor(w_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
 
-    nw_image = no_watermark_dataset[i]
-    nw_target=nw_image[1]
-    nw_image=nw_image[0]
-    nw_example=torch.tensor(nw_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
+        w_target_conf = torch.max(model_conf(w_example), 1)[1].to(int)
+        w_target_sup = torch.max(model_sup(w_example), 1)[1].to(int)
+        w_target_no = torch.max(model_no(w_example), 1)[1].to(int)
 
-    nw_target_conf = torch.max(model_conf(nw_example), 1)[1].to(int)
-    nw_target_sup = torch.max(model_sup(nw_example), 1)[1].to(int)
-    nw_target_no = torch.max(model_no(nw_example), 1)[1].to(int)
+        nw_image = no_watermark_dataset[i]
+        nw_target=nw_image[1]
+        nw_image=nw_image[0]
+        nw_example=torch.tensor(nw_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
 
-    # explanations for predicted class (n)w_target_{MODEL}
-    a_conf_w,_=plot_atts(w_example,model_conf,w_target_conf)
-    a_sup_w,_=plot_atts(w_example,model_sup,w_target_sup)
-    a_no_w,_=plot_atts(w_example,model_no,w_target_no)
+        nw_target_conf = torch.max(model_conf(nw_example), 1)[1].to(int)
+        nw_target_sup = torch.max(model_sup(nw_example), 1)[1].to(int)
+        nw_target_no = torch.max(model_no(nw_example), 1)[1].to(int)
 
-    a_conf_nw,_=plot_atts(nw_example,model_conf,nw_target_conf)
-    a_sup_nw,_=plot_atts(nw_example,model_sup,nw_target_sup)
-    a_no_nw,_=plot_atts(nw_example,model_no,nw_target_no)
-    
-    # # explanations for ground truth class (n)w_target
-    # a_conf_w_gt,_=plot_atts(w_example,model_conf,w_target)
-    # a_sup_w_gt,_=plot_atts(w_example,model_sup,w_target)
-    # a_no_w_gt,_=plot_atts(w_example,model_no,w_target)
+        # explanations for predicted class (n)w_target_{MODEL}
+        a_conf_w,_=plot_atts(w_example,model_conf,w_target_conf)
+        a_sup_w,_=plot_atts(w_example,model_sup,w_target_sup)
+        a_no_w,_=plot_atts(w_example,model_no,w_target_no)
 
-    # a_conf_nw_gt,_=plot_atts(nw_example,model_conf,nw_target)
-    # a_sup_nw_gt,_=plot_atts(nw_example,model_sup,nw_target)
-    # a_no_nw_gt,_=plot_atts(nw_example,model_no,nw_target)
+        a_conf_nw,_=plot_atts(nw_example,model_conf,nw_target_conf)
+        a_sup_nw,_=plot_atts(nw_example,model_sup,nw_target_sup)
+        a_no_nw,_=plot_atts(nw_example,model_no,nw_target_no)
+        
+        # # explanations for ground truth class (n)w_target
+        # a_conf_w_gt,_=plot_atts(w_example,model_conf,w_target)
+        # a_sup_w_gt,_=plot_atts(w_example,model_sup,w_target)
+        # a_no_w_gt,_=plot_atts(w_example,model_no,w_target)
 
-    for method in list(energy_water_conf.keys()):
-        energy_water_conf[method].append(energy(a_conf_w[method]))
-        energy_water_sup[method].append(energy(a_sup_w[method]))
-        energy_water_no[method].append(energy(a_no_w[method]))
+        # a_conf_nw_gt,_=plot_atts(nw_example,model_conf,nw_target)
+        # a_sup_nw_gt,_=plot_atts(nw_example,model_sup,nw_target)
+        # a_no_nw_gt,_=plot_atts(nw_example,model_no,nw_target)
 
-        energy_no_water_conf[method].append(energy(a_conf_nw[method]))
-        energy_no_water_sup[method].append(energy(a_sup_nw[method]))
-        energy_no_water_no[method].append(energy(a_no_nw[method]))
+        for method in list(energy_water_conf.keys()):
+            energy_water_conf[method].append(energy(a_conf_w[method]))
+            energy_water_sup[method].append(energy(a_sup_w[method]))
+            energy_water_no[method].append(energy(a_no_w[method]))
 
-        # energy_water_conf_gt[method].append(energy(a_conf_w_gt[method]))
-        # energy_water_sup_gt[method].append(energy(a_sup_w_gt[method]))
-        # energy_water_no_gt[method].append(energy(a_no_w_gt[method]))
+            energy_no_water_conf[method].append(energy(a_conf_nw[method]))
+            energy_no_water_sup[method].append(energy(a_sup_nw[method]))
+            energy_no_water_no[method].append(energy(a_no_nw[method]))
 
-        # energy_no_water_conf_gt[method].append(energy(a_conf_nw_gt[method]))
-        # energy_no_water_sup_gt[method].append(energy(a_sup_nw_gt[method]))
-        # energy_no_water_no_gt[method].append(energy(a_no_nw_gt[method]))
+            # energy_water_conf_gt[method].append(energy(a_conf_w_gt[method]))
+            # energy_water_sup_gt[method].append(energy(a_sup_w_gt[method]))
+            # energy_water_no_gt[method].append(energy(a_no_w_gt[method]))
 
-    x_wm = energy(np.dot(w_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
-    x_no = energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
+            # energy_no_water_conf_gt[method].append(energy(a_conf_nw_gt[method]))
+            # energy_no_water_sup_gt[method].append(energy(a_sup_nw_gt[method]))
+            # energy_no_water_no_gt[method].append(energy(a_no_nw_gt[method]))
 
-    sample = w_image.copy().transpose(1,2,0) - wm_avg.transpose(1,2,0)
-    img_r = sample[:,:,0]
-    img_g = sample[:,:,1]
-    img_b = sample[:,:,2]
-    
-    lapl_wm = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
-    sob_wm = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
+        x_wm = energy(np.dot(w_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
+        x_no = energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
 
-    nw_image.append(energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights)))
-    
-    sample = nw_image.copy().transpose(1,2,0) - no_wm_avg.transpose(1,2,0)
-    img_r = sample[:,:,0]
-    img_g = sample[:,:,1]
-    img_b = sample[:,:,2]
-    
-    lapl_no = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
-    sob_no = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
+        sample = w_image.copy().transpose(1,2,0) - wm_avg.transpose(1,2,0)
+        img_r = sample[:,:,0]
+        img_g = sample[:,:,1]
+        img_b = sample[:,:,2]
+        
+        lapl_wm = energy(np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b)))
+        sob_wm = energy(np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b)))
 
-    res = {
-        'laplace': [lapl_wm, lapl_no],
-        'sobel': [sob_wm, sob_no],
-        'x': [x_wm, x_no]
-    }
-    
-    for baseline, results in res.items():
-        energy_water_conf[baseline].append(results[0])
-        energy_no_water_conf[baseline].append(results[1])
+        # nw_image.append(energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights)))
+        
+        sample = nw_image.copy().transpose(1,2,0) - no_wm_avg.transpose(1,2,0)
+        img_r = sample[:,:,0]
+        img_g = sample[:,:,1]
+        img_b = sample[:,:,2]
+        
+        lapl_no = energy(np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b)))
+        sob_no = energy(np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b)))
+        
 
-        energy_water_sup[baseline].append(results[0])
-        energy_no_water_sup[baseline].append(results[1])
+        res['laplace'][0].append(lapl_wm)
+        res['laplace'][1].append(lapl_no)
+        res['sobel'][0].append(sob_wm)
+        res['sobel'][1].append(sob_no)
+        res['x'][0].append(x_wm)
+        res['x'][1].append(x_no)
 
-        energy_water_no[baseline].append(results[0])
-        energy_no_water_no[baseline].append(results[1])
-
-    if (i%100)==0:
-        print(i, 'out of', len(watermark_dataset))
-        print(time.time()-t0)
-        # t0=time.time()
-
-
-
-for x, label in watermark_dataset:
-    
-    x_wm.append(energy(np.dot(x.copy().transpose(1,2,0)[...,:3], rgb_weights)))
-    
-    sample = x.copy().transpose(1,2,0) - wm_avg.transpose(1,2,0)
-    img_r = sample[:,:,0]
-    img_g = sample[:,:,1]
-    img_b = sample[:,:,2]
-    
-    lapl = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
-    sob = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
-    
-    lapl_wm.append(energy(lapl))
-    sob_wm.append(energy(sob))
-    
-lapl_no = []
-sob_no = []
-x_no = []
-
-for x, label in no_watermark_dataset:
-    
-    x_no.append(energy(np.dot(x.copy().transpose(1,2,0)[...,:3], rgb_weights)))
-    
-    sample = x.copy().transpose(1,2,0) - no_wm_avg.transpose(1,2,0)
-    img_r = sample[:,:,0]
-    img_g = sample[:,:,1]
-    img_b = sample[:,:,2]
-    
-    lapl = np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b))
-    sob = np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b))
-    
-    lapl_no.append(energy(lapl))
-    sob_no.append(energy(sob))
-       
-with open(f'energy_baselines_{split}.pickle', 'wb') as f:
-    pickle.dump([[lapl_no, lapl_wm], [sob_no, sob_wm], [x_no, x_wm]], f) 
+        if (i%100)==0:
+            print(i, 'out of', len(watermark_dataset))
+            print(time.time()-t0)
+            # t0=time.time()
     
 
+for baseline, results in res.keys():
+        energy_water_conf[baseline] = results[0]
+        energy_no_water_conf[baseline] = results[1]
 
-with open(f'./energies/energy_water_conf_pred_lrp_{split}_{model_ind}.pickle', 'wb') as f:
+        energy_water_sup[baseline] = results[0]
+        energy_no_water_sup[baseline] = results[1]
+
+        energy_no_water_conf[baseline] = results[0]
+        energy_no_water_no[baseline] = results[1]
+
+
+with open(f'./energies/energy_water_conf_pred_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_water_conf, f)    
-with open(f'./energies/energy_water_sup_pred_lrp_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_water_sup_pred_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_water_sup, f)    
-with open(f'./energies/energy_water_no_pred_lrp_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_water_no_pred_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_water_no, f)    
     
-with open(f'./energies/energy_no_water_conf_pred_lrp_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_no_water_conf_pred_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_no_water_conf, f)    
-with open(f'./energies/energy_no_water_sup_pred_lrp_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_no_water_sup_pred_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_no_water_sup, f)    
-with open(f'./energies/energy_no_water_no_pred_lrp_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_no_water_no_pred_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_no_water_no, f)
 
 

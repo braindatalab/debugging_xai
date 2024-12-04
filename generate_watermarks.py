@@ -50,7 +50,7 @@ print('total dogs and cats:', len(dog_paths), len(cat_paths))
 folder=''
 watermark_path_jpeg=folder+'watermark banner.jpg'
 image_size=(128,128)
-intensity=0.8
+intensity=0.8 # opacity
 
 def add_watermark(background_image_path,watermark_path, intensity_watermark,image_size,white_bool):
     #watermark should be jpg with white background
@@ -170,18 +170,18 @@ for i in [int(sys.argv[1])]:
     
     inds = list(range(N))
     print("inds ", len(inds)) 
-    train_inds = random.sample(inds, k=int(N*0.7))
-    inds = list(np.delete(inds, np.where(train_inds==inds)))
-    print("inds val", len(inds))
-    val_inds = random.sample(inds, k=int(N*0.15))
-    inds = list(np.delete(inds, np.where(val_inds==inds)))
-    print("inds test", len(inds))
-    test_inds = random.sample(inds, k=int(N*0.15))
+    # print(inds)
 
-    print(len(train_inds))
-    print(len(val_inds))
-    print(len(test_inds))
-    #sys.exit()
+    # train_inds = random.sample(inds, k=int(N*0.7))
+    train_inds = np.random.choice(inds,size=int(N*0.7), replace=False)
+    inds = np.setdiff1d(inds, train_inds)
+    print("inds val", len(inds))
+
+    val_inds = np.random.choice(inds,size=int(N*0.15), replace=False)
+    inds = np.setdiff1d(inds, val_inds)
+    print("inds test", len(inds))
+
+    test_inds = np.random.choice(inds,size=int(N*0.15), replace=False)
 
     cat_names_train = list(np.array(cat_paths)[train_inds])
     cat_names_val = list(np.array(cat_paths)[val_inds])

@@ -3,26 +3,34 @@ import sys
 import numpy as np
 import time
 import pickle
-
+from torch import manual_seed
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import random
 from PIL import Image 
 
-SEED=1234
+SEEDS = [12031212,1234,5845389,23423,343495,2024,3842834,23402304,482347247,1029237127]
+
+SEED=SEEDS[int(sys.argv[1])] 
+
+manual_seed(SEED)
+
 np.random.seed(SEED)
 torch.manual_seed(SEED)
+
+os.environ['PYTHONHASHSEED']=str(SEED)
+
+random.seed(SEED)
 
 if sys.argv[2] is not None:
     DEVICE = torch.device("cuda",int(sys.argv[2]))
 else:
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-DEVICE = 'cpu'
+# DEVICE = 'cpu'
 
-from captum.attr import IntegratedGradients, Saliency, DeepLift, DeepLiftShap, GradientShap  
-from captum.attr import GuidedBackprop, Deconvolution, LRP, InputXGradient, Lime
+from captum.attr import IntegratedGradients, GradientShap, Deconvolution, LRP
 
 from zennit.composites import EpsilonAlpha2Beta1
 
@@ -154,7 +162,7 @@ def plot_atts(data,model,target):
     lrp_att=np.transpose(LRP(model).attribute(data,target=target).squeeze().cpu().detach().numpy(), (1, 2, 0)).squeeze()
     # lime_att=np.transpose(Lime(model).attribute(data,target=target).squeeze().cpu().detach().numpy(), (1, 2, 0)).squeeze()
     
-    lrp_ab = lrp(w_example,model_conf,w_target_conf, DEVICE)
+    lrp_ab = lrp(w_example,model,w_target, DEVICE)
     rgb_weights = [0.2989, 0.5870, 0.1140]
     
     grayscale_att_deconv = np.dot(deconv_att[...,:3], rgb_weights)
@@ -235,9 +243,9 @@ energy_no_water_conf_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_
 energy_no_water_sup_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 energy_no_water_no_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 
-model_conf=load_trained(f'./cnn_conf_{model_ind}.pt').to(DEVICE)
-model_sup=load_trained(f'./cnn_sup_{model_ind}.pt').to(DEVICE)
-model_no=load_trained(f'./cnn_no_{model_ind}.pt').to(DEVICE)
+model_conf=load_trained(f'./models/cnn_conf_{model_ind}.pt').to(DEVICE)
+model_sup=load_trained(f'./models/cnn_sup_{model_ind}.pt').to(DEVICE)
+model_no=load_trained(f'./models/cnn_no_{model_ind}.pt').to(DEVICE)
 
 folder=os.getcwd()+'/images'
 print(folder)
