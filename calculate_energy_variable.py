@@ -244,6 +244,14 @@ energy_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab'
 energy_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 
+explanations_water_conf={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+explanations_water_sup={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+explanations_water_no={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+
+explanations_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [],}
+explanations_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
+explanations_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
+
 # energy_water_conf_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
 # energy_water_sup_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
 # energy_water_no_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
@@ -335,6 +343,14 @@ for model_ind in [int(model_ind)]:
             energy_no_water_sup[method].append(energy(a_sup_nw[method], w_mask))
             energy_no_water_no[method].append(energy(a_no_nw[method], w_mask))
 
+            explanations_water_conf[method].append(a_conf_w[method])
+            explanations_water_sup[method].append(a_sup_w[method])
+            explanations_water_no[method].append(a_no_w[method])
+
+            explanations_no_water_conf[method].append(a_conf_nw[method])
+            explanations_no_water_sup[method].append(a_sup_nw[method])
+            explanations_no_water_no[method].append(a_no_nw[method])
+
             # energy_water_conf_gt[method].append(energy(a_conf_w_gt[method]))
             # energy_water_sup_gt[method].append(energy(a_sup_w_gt[method]))
             # energy_water_no_gt[method].append(energy(a_no_w_gt[method]))
@@ -402,6 +418,23 @@ with open(f'./energies/energy_no_water_sup_pred_variable_{split}_{model_ind}.pic
     pickle.dump(energy_no_water_sup, f)    
 with open(f'./energies/energy_no_water_no_pred_variable_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_no_water_no, f)
+
+
+# Explanation files are ~1.1GB each, need to save server disk space by only using the first split data. 
+if str(split) == "0":
+    with open(f'./explanations/explanations_water_conf_pred_variable_{split}_{model_ind}.pickle', 'wb') as f:
+        pickle.dump(explanations_water_conf, f)    
+    with open(f'./explanations/explanations_water_sup_pred_variable_{split}_{model_ind}.pickle', 'wb') as f:
+        pickle.dump(explanations_water_sup, f)    
+    with open(f'./explanations/explanations_water_no_pred_variable_{split}_{model_ind}.pickle', 'wb') as f:
+        pickle.dump(explanations_water_no, f)    
+        
+    with open(f'./explanations/explanations_no_water_conf_pred_variable_{split}_{model_ind}.pickle', 'wb') as f:
+        pickle.dump(explanations_no_water_conf, f)    
+    with open(f'./explanations/explanations_no_water_sup_pred_variable_{split}_{model_ind}.pickle', 'wb') as f:
+        pickle.dump(explanations_no_water_sup, f)    
+    with open(f'./explanations/explanations_no_water_no_pred_variable_{split}_{model_ind}.pickle', 'wb') as f:
+        pickle.dump(explanations_no_water_no, f)
 
 
 # with open(f'./energies/energy_water_conf_gt_{split}_{model_ind}.pickle', 'wb') as f:

@@ -26,59 +26,61 @@ SEED=1234
 np.random.seed(SEED)
 torch.manual_seed(SEED)
 
-class Net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv1=nn.Conv2d(in_channels=3,out_channels=64,kernel_size=5)
-        self.conv2=nn.Conv2d(in_channels=64,out_channels=128,kernel_size=3)
-        self.conv3=nn.Conv2d(in_channels=128,out_channels=256,kernel_size=5)
-        
-        self.maxPooling2=nn.MaxPool2d(kernel_size=2)
-        self.maxPooling4_0=nn.MaxPool2d(kernel_size=4)
-        self.maxPooling4_1=nn.MaxPool2d(kernel_size=4)
-#         self.adPooling=nn.AdaptiveAvgPool1d(256)
-        
-        self.fc1=nn.Linear(in_features=256,out_features=128)
-        self.fc2=nn.Linear(in_features=128,out_features=64)
-        self.out=nn.Linear(in_features=64,out_features=2)
 
-    def forward(self,x):
-        x=self.conv1(x)
-        x=self.maxPooling4_0(x)
-        x=F.relu(x)
-        
-        x=self.conv2(x)
-        x=self.maxPooling4_1(x)
-        x=F.relu(x)
-        
-        x=self.conv3(x)
-        x=self.maxPooling2(x)
-        x=F.relu(x)
-        
-        x=F.dropout(x)
-        x=x.view(1,x.size()[0],-1) #stretch to 1d data
-        #x=self.adPooling(x).squeeze()
-        
-        x=self.fc1(x)
-        x=F.relu(x)
-        
-        x=self.fc2(x)
-        x=F.relu(x)
-        
-        x=self.out(x)
-        
-        return x[0]
+class Net(nn.Module):
+    def __init__(self, num_classes=2):
+        super(Net, self).__init__()
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+            )
+        self.layer5 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
+        self.fc = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(64*128*8, 4096),
+            nn.ReLU())
+        self.fc1 = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(4096, 1028),
+            nn.ReLU())
+        self.fc2= nn.Sequential(
+            nn.Linear(1028, num_classes))
+
+    def forward(self, x):
+        out = self.layer1(x)
+
+        out = self.layer3(out)
+
+        out = self.layer5(out)
+
+        out = out.reshape(out.size(0), -1)
+        out = self.fc(out)
+        out = self.fc1(out)
+        out = self.fc2(out)
+        return out        
 
 def load_trained(path):
     model = Net()
     model.load_state_dict(torch.load(path,map_location=DEVICE))
     return model
 
+
 def print_AUC(loader, model_ind=0, split=0):
 
-    cnn_conf=load_trained(f'./models/cnn_confounder_{split}_{model_ind}.pt').to(DEVICE).eval()
-    cnn_sup=load_trained(f'./models/cnn_suppressor_{split}_{model_ind}.pt').to(DEVICE).eval()
-    cnn_no=load_trained(f'./models/cnn_no_watermark_{split}_{model_ind}.pt').to(DEVICE).eval()
+    cnn_conf=load_trained(f'./models/cnn_confounder_{split}_{model_ind}.pt').eval().to(DEVICE)
+    cnn_sup=load_trained(f'./models/cnn_suppressor_{split}_{model_ind}.pt').eval().to(DEVICE)
+    cnn_no=load_trained(f'./models/cnn_no_watermark_{split}_{model_ind}.pt').eval().to(DEVICE)
     
     #models -> cnn_no; cnn_sup; cnn_conf
 
@@ -155,7 +157,7 @@ sup_labels = np.array([])
 no_labels = np.array([])
 
 for split in [sys.argv[1]]:
-    for i in range(10):
+    for i in range(5):
         SEEDS = [12031212,1234,5845389,23423,343495,2024,3842834,23402304,482347247,1029237127]
 
         SEED=SEEDS[i] 
@@ -260,25 +262,25 @@ print('no mark data: ', torch.std(torch.tensor(no_mark_data_results), axis=0))
 import pickle as pkl
 split = sys.argv[1]
 
-with open(f'auroc_results_split_{split}.pickle', 'wb') as f:
+with open(f'./auroc_results_split_{split}.pickle', 'wb') as f:
     pickle.dump([confounder_data_results, suppressor_data_results, no_mark_data_results], f)
 
-with open(f'auroc_conf_{split}.pickle', 'wb') as f:
+with open(f'./auroc_conf_{split}.pickle', 'wb') as f:
     pickle.dump([conf_conf, conf_sup, conf_no], f)    
 
-with open(f'auroc_sup_{split}.pickle', 'wb') as f:
+with open(f'./auroc_sup_{split}.pickle', 'wb') as f:
     pickle.dump([sup_conf, sup_sup, sup_no], f)
 
-with open(f'auroc_no_{split}.pickle', 'wb') as f:
+with open(f'./auroc_no_{split}.pickle', 'wb') as f:
     pickle.dump([no_conf, no_sup, no_no], f)
 
-with open(f'conf_labels_{split}.pickle', 'wb') as f:
+with open(f'./conf_labels_{split}.pickle', 'wb') as f:
     pickle.dump(conf_labels, f)
 
-with open(f'sup_labels_{split}.pickle', 'wb') as f:
+with open(f'./sup_labels_{split}.pickle', 'wb') as f:
     pickle.dump(sup_labels, f)
 
-with open(f'no_labels_{split}.pickle', 'wb') as f:
+with open(f'./no_labels_{split}.pickle', 'wb') as f:
     pickle.dump(no_labels, f)
 
 from sklearn.metrics import roc_curve
@@ -305,5 +307,5 @@ axs[0].set_ylabel('True Positive Rate')
 axs[2].legend(loc='lower right')
 
 plt.tight_layout()
-plt.savefig('roc_curves.png', bbox_inches='tight')
+plt.savefig(f'./figures/roc_curves_{split}.png', bbox_inches='tight')
 

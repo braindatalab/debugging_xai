@@ -28,10 +28,10 @@ random.seed(SEED)
 # if sys.argv[2] is not None:
 #     DEVICE = torch.device("cuda",int(sys.argv[2]))
 # else:
-
-DEVICE = torch.device("cuda",2)
-
-# DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+#DEVICE = 'cpu'
+print('testing testing 123')
+print(DEVICE)
 
 # DEVICE = 'cpu'
 
@@ -40,51 +40,48 @@ from captum.attr import IntegratedGradients, GradientShap, Deconvolution, LRP, L
 from zennit.composites import EpsilonAlpha2Beta1
 
 split = sys.argv[1]
-# model_ind = sys.argv[2]
-print(f'SPLIT: {split}')
+model_ind = sys.argv[2]
+print(f'SPLIT: {split} MODEL IND: {model_ind}')
 
 class Net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv1=nn.Conv2d(in_channels=3,out_channels=64,kernel_size=5)
-        self.conv2=nn.Conv2d(in_channels=64,out_channels=128,kernel_size=3)
-        self.conv3=nn.Conv2d(in_channels=128,out_channels=256,kernel_size=5)
+    def __init__(self, num_classes=2):
+        super(Net, self).__init__()
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+            )
+        self.layer5 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2))
+        self.fc = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(64*128*8, 4096),
+            nn.ReLU())
+        self.fc1 = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(4096, 1028),
+            nn.ReLU())
+        self.fc2= nn.Sequential(
+            nn.Linear(1028, num_classes))
         
-        self.maxPooling2=nn.MaxPool2d(kernel_size=2)
-        self.maxPooling4_0=nn.MaxPool2d(kernel_size=4)
-        self.maxPooling4_1=nn.MaxPool2d(kernel_size=4)
-#         self.adPooling=nn.AdaptiveAvgPool1d(256)
-        
-        self.fc1=nn.Linear(in_features=256,out_features=128)
-        self.fc2=nn.Linear(in_features=128,out_features=64)
-        self.out=nn.Linear(in_features=64,out_features=2)
-
-    def forward(self,x):
-        x=self.conv1(x)
-        x=self.maxPooling4_0(x)
-        x=F.relu(x)
-        
-        x=self.conv2(x)
-        x=self.maxPooling4_1(x)
-        x=F.relu(x)
-        
-        x=self.conv3(x)
-        x=self.maxPooling2(x)
-        x=F.relu(x)
-        
-        x=F.dropout(x)
-        x=x.view(1,x.size()[0],-1) #stretch to 1d data
-        #x=self.adPooling(x).squeeze()
-        
-        x=self.fc1(x)
-        x=F.relu(x)
-        
-        x=self.fc2(x)
-        x=F.relu(x)
-        
-        x=self.out(x)
-        
-        return x[0]
+    def forward(self, x):
+        out = self.layer1(x)
+        out = self.layer3(out)
+        out = self.layer5(out)
+        out = out.reshape(out.size(0), -1)
+        out = self.fc(out)
+        out = self.fc1(out)
+        out = self.fc2(out)
+        return out
 
 
 def rescale_values(image,max_val,min_val):
@@ -94,14 +91,25 @@ def rescale_values(image,max_val,min_val):
     '''
     return (image-image.min())/(image.max()-image.min())*(max_val-min_val)+min_val
 
+variable_string = f'_{sys.argv[3]}' if sys.argv[3] == 'variable' else ''
 
-with open(f'./artifacts/split_{split}_no_watermark_test.pkl', 'rb') as f:
-    no_watermark_dataset, labels_test_no, _ = pickle.load(f)
-    no_watermark_dataset = [[rescale_values(x,1,0).transpose(2,0,1),labels_test_no.flatten()[i]] for i,x in enumerate(no_watermark_dataset)]
+# variable position WM data has an extra return arg (stored wm array)
+try:
+    with open(f'./artifacts/split_{split}_no_watermark{variable_string}_test.pkl', 'rb') as f:
+        no_watermark_dataset, labels_test_no, _ = pickle.load(f)
+        no_watermark_dataset = [[rescale_values(x,1,0).transpose(2,0,1),labels_test_no.flatten()[i]] for i,x in enumerate(no_watermark_dataset)]
 
-with open(f'./artifacts/split_{split}_all_watermark_test.pkl', 'rb') as f:
-    watermark_dataset, labels_test, _ = pickle.load(f)
-    watermark_dataset = [[rescale_values(x,1,0).transpose(2,0,1),labels_test.flatten()[i]] for i,x in enumerate(watermark_dataset)]
+    with open(f'./artifacts/split_{split}_all_watermark{variable_string}_test.pkl', 'rb') as f:
+        watermark_dataset, labels_test, _ = pickle.load(f)
+        watermark_dataset = [[rescale_values(x,1,0).transpose(2,0,1),labels_test.flatten()[i]] for i,x in enumerate(watermark_dataset)]
+except:
+    with open(f'./artifacts/split_{split}_no_watermark{variable_string}_test.pkl', 'rb') as f:
+        no_watermark_dataset, labels_test_no, _, _ = pickle.load(f)
+        no_watermark_dataset = [[rescale_values(x,1,0).transpose(2,0,1),labels_test_no.flatten()[i]] for i,x in enumerate(no_watermark_dataset)]
+
+    with open(f'./artifacts/split_{split}_all_watermark{variable_string}_test.pkl', 'rb') as f:
+        watermark_dataset, labels_test, _, masks_wm = pickle.load(f)
+        watermark_dataset = [[rescale_values(x,1,0).transpose(2,0,1),labels_test.flatten()[i]] for i,x in enumerate(watermark_dataset)]
 
 
 folder=os.getcwd()
@@ -243,14 +251,19 @@ energy_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab'
 energy_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 energy_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
 
-# energy_water_conf_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
-# energy_water_sup_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
-# energy_water_no_gt={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
 
-# energy_no_water_conf_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
-# energy_no_water_sup_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
-# energy_no_water_no_gt={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
+explanations_water_conf={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+explanations_water_sup={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
+explanations_water_no={'deconv':[],'int_grads':[],'shap':[],'lrp':[], 'lrp_ab': []}
 
+explanations_no_water_conf={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': [],}
+explanations_no_water_sup={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
+explanations_no_water_no={'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []}
+
+
+model_conf=load_trained(f'./models/cnn_confounder{variable_string}_{split}_{model_ind}.pt').eval().to(DEVICE)
+model_sup=load_trained(f'./models/cnn_suppressor{variable_string}_{split}_{model_ind}.pt').eval().to(DEVICE)
+model_no=load_trained(f'./models/cnn_no_watermark{variable_string}_{split}_{model_ind}.pt').eval().to(DEVICE)
 
 folder=os.getcwd()+'/images'
 print(folder)
@@ -278,103 +291,106 @@ res = {
 }
 
 
-for model_ind in range(5):
+for i in range(len(watermark_dataset)):
+    w_image = watermark_dataset[i]
+    w_target=w_image[1]
+    w_image=w_image[0]
     
-    model_conf=load_trained(f'./models/cnn_confounder_{split}_{model_ind}.pt').eval().to(DEVICE)
-    model_sup=load_trained(f'./models/cnn_suppressor_{split}_{model_ind}.pt').eval().to(DEVICE)
-    model_no=load_trained(f'./models/cnn_no_watermark_{split}_{model_ind}.pt').eval().to(DEVICE)
+    w_example=torch.tensor(w_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
 
-    for i in range(len(watermark_dataset)):
-        w_image = watermark_dataset[i]
-        w_target=w_image[1]
-        w_image=w_image[0]
+    w_target_conf = torch.max(model_conf(w_example), 1)[1].to(int)
+    w_target_sup = torch.max(model_sup(w_example), 1)[1].to(int)
+    w_target_no = torch.max(model_no(w_example), 1)[1].to(int)
+
+    nw_image = no_watermark_dataset[i]
+    nw_target=nw_image[1]
+    nw_image=nw_image[0]
+    nw_example=torch.tensor(nw_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
+
+    nw_target_conf = torch.max(model_conf(nw_example), 1)[1].to(int)
+    nw_target_sup = torch.max(model_sup(nw_example), 1)[1].to(int)
+    nw_target_no = torch.max(model_no(nw_example), 1)[1].to(int)
+
+    # explanations for predicted class (n)w_target_{MODEL}
+    a_conf_w,_=plot_atts(w_example,model_conf,w_target_conf)
+    a_sup_w,_=plot_atts(w_example,model_sup,w_target_sup)
+    a_no_w,_=plot_atts(w_example,model_no,w_target_no)
+
+    a_conf_nw,_=plot_atts(nw_example,model_conf,nw_target_conf)
+    a_sup_nw,_=plot_atts(nw_example,model_sup,nw_target_sup)
+    a_no_nw,_=plot_atts(nw_example,model_no,nw_target_no)
+    
+    # # explanations for ground truth class (n)w_target
+    # a_conf_w_gt,_=plot_atts(w_example,model_conf,w_target)
+    # a_sup_w_gt,_=plot_atts(w_example,model_sup,w_target)
+    # a_no_w_gt,_=plot_atts(w_example,model_no,w_target)
+
+    # a_conf_nw_gt,_=plot_atts(nw_example,model_conf,nw_target)
+    # a_sup_nw_gt,_=plot_atts(nw_example,model_sup,nw_target)
+    # a_no_nw_gt,_=plot_atts(nw_example,model_no,nw_target)
+
+    for method in list(energy_water_conf.keys()):
+        energy_water_conf[method].append(energy(a_conf_w[method]))
+        energy_water_sup[method].append(energy(a_sup_w[method]))
+        energy_water_no[method].append(energy(a_no_w[method]))
+
+        energy_no_water_conf[method].append(energy(a_conf_nw[method]))
+        energy_no_water_sup[method].append(energy(a_sup_nw[method]))
+        energy_no_water_no[method].append(energy(a_no_nw[method]))
+
         
-        w_example=torch.tensor(w_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
+        explanations_water_conf[method].append(a_conf_w[method])
+        explanations_water_sup[method].append(a_sup_w[method])
+        explanations_water_no[method].append(a_no_w[method])
 
-        w_target_conf = torch.max(model_conf(w_example), 1)[1].to(int)
-        w_target_sup = torch.max(model_sup(w_example), 1)[1].to(int)
-        w_target_no = torch.max(model_no(w_example), 1)[1].to(int)
+        explanations_no_water_conf[method].append(a_conf_nw[method])
+        explanations_no_water_sup[method].append(a_sup_nw[method])
+        explanations_no_water_no[method].append(a_no_nw[method])
 
-        nw_image = no_watermark_dataset[i]
-        nw_target=nw_image[1]
-        nw_image=nw_image[0]
-        nw_example=torch.tensor(nw_image).unsqueeze(0).to(DEVICE,dtype=torch.float)
+        # energy_water_conf_gt[method].append(energy(a_conf_w_gt[method]))
+        # energy_water_sup_gt[method].append(energy(a_sup_w_gt[method]))
+        # energy_water_no_gt[method].append(energy(a_no_w_gt[method]))
 
-        nw_target_conf = torch.max(model_conf(nw_example), 1)[1].to(int)
-        nw_target_sup = torch.max(model_sup(nw_example), 1)[1].to(int)
-        nw_target_no = torch.max(model_no(nw_example), 1)[1].to(int)
+        # energy_no_water_conf_gt[method].append(energy(a_conf_nw_gt[method]))
+        # energy_no_water_sup_gt[method].append(energy(a_sup_nw_gt[method]))
+        # energy_no_water_no_gt[method].append(energy(a_no_nw_gt[method]))
 
-        # explanations for predicted class (n)w_target_{MODEL}
-        a_conf_w,_=plot_atts(w_example,model_conf,w_target_conf)
-        a_sup_w,_=plot_atts(w_example,model_sup,w_target_sup)
-        a_no_w,_=plot_atts(w_example,model_no,w_target_no)
+    x_wm = energy(np.dot(w_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
+    x_no = energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
 
-        a_conf_nw,_=plot_atts(nw_example,model_conf,nw_target_conf)
-        a_sup_nw,_=plot_atts(nw_example,model_sup,nw_target_sup)
-        a_no_nw,_=plot_atts(nw_example,model_no,nw_target_no)
-        
-        # # explanations for ground truth class (n)w_target
-        # a_conf_w_gt,_=plot_atts(w_example,model_conf,w_target)
-        # a_sup_w_gt,_=plot_atts(w_example,model_sup,w_target)
-        # a_no_w_gt,_=plot_atts(w_example,model_no,w_target)
+    sample = w_image.copy().transpose(1,2,0) - wm_avg.transpose(1,2,0)
+    img_r = sample[:,:,0]
+    img_g = sample[:,:,1]
+    img_b = sample[:,:,2]
+    
+    lapl_wm = energy(np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b)))
+    sob_wm = energy(np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b)))
 
-        # a_conf_nw_gt,_=plot_atts(nw_example,model_conf,nw_target)
-        # a_sup_nw_gt,_=plot_atts(nw_example,model_sup,nw_target)
-        # a_no_nw_gt,_=plot_atts(nw_example,model_no,nw_target)
-
-        for method in list(energy_water_conf.keys()):
-            energy_water_conf[method].append(energy(a_conf_w[method]))
-            energy_water_sup[method].append(energy(a_sup_w[method]))
-            energy_water_no[method].append(energy(a_no_w[method]))
-
-            energy_no_water_conf[method].append(energy(a_conf_nw[method]))
-            energy_no_water_sup[method].append(energy(a_sup_nw[method]))
-            energy_no_water_no[method].append(energy(a_no_nw[method]))
-
-            # energy_water_conf_gt[method].append(energy(a_conf_w_gt[method]))
-            # energy_water_sup_gt[method].append(energy(a_sup_w_gt[method]))
-            # energy_water_no_gt[method].append(energy(a_no_w_gt[method]))
-
-            # energy_no_water_conf_gt[method].append(energy(a_conf_nw_gt[method]))
-            # energy_no_water_sup_gt[method].append(energy(a_sup_nw_gt[method]))
-            # energy_no_water_no_gt[method].append(energy(a_no_nw_gt[method]))
-
-        x_wm = energy(np.dot(w_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
-        x_no = energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights))
-
-        sample = w_image.copy().transpose(1,2,0) - wm_avg.transpose(1,2,0)
-        img_r = sample[:,:,0]
-        img_g = sample[:,:,1]
-        img_b = sample[:,:,2]
-        
-        lapl_wm = energy(np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b)))
-        sob_wm = energy(np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b)))
-
-        # nw_image.append(energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights)))
-        
-        sample = nw_image.copy().transpose(1,2,0) - no_wm_avg.transpose(1,2,0)
-        img_r = sample[:,:,0]
-        img_g = sample[:,:,1]
-        img_b = sample[:,:,2]
-        
-        lapl_no = energy(np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b)))
-        sob_no = energy(np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b)))
-        
-
-        res['laplace'][0].append(lapl_wm)
-        res['laplace'][1].append(lapl_no)
-        res['sobel'][0].append(sob_wm)
-        res['sobel'][1].append(sob_no)
-        res['x'][0].append(x_wm)
-        res['x'][1].append(x_no)
-
-        if (i%100)==0:
-            print(i, 'out of', len(watermark_dataset))
-            print(time.time()-t0)
-            # t0=time.time()
+    # nw_image.append(energy(np.dot(nw_image.copy().transpose(1,2,0)[...,:3], rgb_weights)))
+    
+    sample = nw_image.copy().transpose(1,2,0) - no_wm_avg.transpose(1,2,0)
+    img_r = sample[:,:,0]
+    img_g = sample[:,:,1]
+    img_b = sample[:,:,2]
+    
+    lapl_no = energy(np.abs(laplace(img_r)) + np.abs(laplace(img_g)) + np.abs(laplace(img_b)))
+    sob_no = energy(np.abs(sobel(img_r)) + np.abs(sobel(img_g)) + np.abs(sobel(img_b)))
     
 
-for baseline, results in res.keys():
+    res['laplace'][0].append(lapl_wm)
+    res['laplace'][1].append(lapl_no)
+    res['sobel'][0].append(sob_wm)
+    res['sobel'][1].append(sob_no)
+    res['x'][0].append(x_wm)
+    res['x'][1].append(x_no)
+
+    if (i%100)==0:
+        print(i, 'out of', len(watermark_dataset))
+        print(time.time()-t0)
+        # t0=time.time()
+    
+
+for baseline, results in res.items():
         energy_water_conf[baseline] = results[0]
         energy_no_water_conf[baseline] = results[1]
 
@@ -385,31 +401,85 @@ for baseline, results in res.keys():
         energy_no_water_no[baseline] = results[1]
 
 
-with open(f'./energies/energy_water_conf_pred_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_water_conf_pred{variable_string}_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_water_conf, f)    
-with open(f'./energies/energy_water_sup_pred_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_water_sup_pred{variable_string}_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_water_sup, f)    
-with open(f'./energies/energy_water_no_pred_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_water_no_pred{variable_string}_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_water_no, f)    
     
-with open(f'./energies/energy_no_water_conf_pred_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_no_water_conf_pred{variable_string}_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_no_water_conf, f)    
-with open(f'./energies/energy_no_water_sup_pred_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_no_water_sup_pred{variable_string}_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_no_water_sup, f)    
-with open(f'./energies/energy_no_water_no_pred_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energy_no_water_no_pred{variable_string}_{split}_{model_ind}.pickle', 'wb') as f:
     pickle.dump(energy_no_water_no, f)
 
+import logging
+import matplotlib.pyplot as plt
 
-# with open(f'./energies/energy_water_conf_gt_{split}_{model_ind}.pickle', 'wb') as f:
-#     pickle.dump(energy_water_conf_gt, f)    
-# with open(f'./energies/energy_water_sup_gt_{split}_{model_ind}.pickle', 'wb') as f:
-#     pickle.dump(energy_water_sup_gt, f)    
-# with open(f'./energies/energy_water_no_gt_{split}_{model_ind}.pickle', 'wb') as f:
-#     pickle.dump(energy_water_no_gt, f)    
+from sklearn import cluster, decomposition
+from sklearn.preprocessing import MinMaxScaler
+
+# Display progress logs on stdout
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+def plot_gallery(title, images, image_shape=(128,128), n_col=2, n_row=5, out_file='', cmap=plt.cm.gray):
+    fig, axs = plt.subplots(
+        nrows=n_row,
+        ncols=n_col,
+        figsize=(2.0 * n_col, 2.3 * n_row),
+        facecolor="white",
+        constrained_layout=True,
+    )
+    fig.set_constrained_layout_pads(w_pad=0.01, h_pad=0.02, hspace=0, wspace=0)
+    fig.set_edgecolor("black")
+    fig.suptitle(title, size=16)
+    for ax, vec in zip(axs.flat, images):
+        vmax = max(vec.max(), -vec.min())
+        im = ax.imshow(
+            vec.reshape(image_shape),
+            # vec.reshape(image_shape).astype(np.int64),
+            cmap=cmap,
+            interpolation="nearest",
+            vmin=-vmax,
+            vmax=vmax,
+        )
+        ax.axis("off")
+
+    fig.colorbar(im, ax=axs, orientation="horizontal", shrink=0.99, aspect=40, pad=0.01)
+    plt.savefig(out_file)
+
+
+config_strings = ['water_conf', 'no_conf', 'water_sup', 'no_sup', 'water_no', 'no_no']
+
+rows, columns = 2, 5
+n_plot = 10
+
+for i, explanations in enumerate([explanations_water_conf, explanations_no_water_conf, explanations_water_sup, explanations_no_water_sup, explanations_water_no, explanations_no_water_no]):
     
-# with open(f'./energies/energy_no_water_conf_gt_{split}_{model_ind}.pickle', 'wb') as f:
-#     pickle.dump(energy_no_water_conf_gt, f)    
-# with open(f'./energies/energy_no_water_sup_gt_{split}_{model_ind}.pickle', 'wb') as f:
-#     pickle.dump(energy_no_water_sup_gt, f)    
-# with open(f'./energies/energy_no_water_no_gt_{split}_{model_ind}.pickle', 'wb') as f:
-#     pickle.dump(energy_no_water_no_gt, f)
+    for method in list(explanations.keys()):
+        print(f'{method} explanations PCA for {config_strings[i]} {sys.argv[3]} model split {split}')
+
+        explanations_flattened = np.asarray(explanations[method]).reshape((np.asarray(explanations[method]).shape[0], -1))
+        n_samples, n_features = explanations_flattened.shape
+        print(n_samples, n_features)
+        # Global centering (focus on one feature, centering all samples)
+        explanations_centered = explanations_flattened - explanations_flattened.mean(axis=0)
+
+        # Local centering (focus on one sample, centering all features)
+        explanations_centered -= explanations_centered.mean(axis=1).reshape(n_samples, -1)
+
+        # 0 < n_components < 1 => n_components% variance explained, aka 0.98 => 98% of variance must be explained by the number of components subsequently chosen
+        pca_estimator = decomposition.PCA(
+            n_components=0.98,  svd_solver="full"
+        )
+        pca_estimator.fit(explanations_centered)
+        components = pca_estimator.components_
+        print(components.shape)
+        print(f'Number of PCA components: {pca_estimator.components_}')
+
+        with open(f'./pcs/pc_{config_strings[i]}{variable_string}_{split}_{model_ind}.pickle', 'wb') as f:
+            pickle.dump(components, f)
+
+

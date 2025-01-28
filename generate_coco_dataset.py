@@ -231,12 +231,16 @@ beta_norm = scipy.stats.beta.rvs(3, 3, size=N)
 
 # print('time to pre-process and save coco datasets:', time.time() - t0)
 
-def generate_data(inds, beta_norm, beta_dark, beta_light, beta_conf, manip_sup, manip_conf, class_name='animal', im_size=224):
+def generate_data(inds, beta_norm, beta_dark, beta_light, beta_conf, manip_sup, manip_conf, class_name='animal', im_size=224, manip_conf_str='norm'):
     data_norm = np.zeros((len(inds), im_size,im_size,3))
     data_conf = np.zeros((len(inds), im_size,im_size,3))
     data_sup = np.zeros((len(inds), im_size,im_size,3))
 
     masks = np.zeros((len(inds), im_size,im_size))
+
+    manips_norm = []
+    manips_conf = []
+    manips_sup = []
 
     # for ind in inds
 
@@ -245,8 +249,7 @@ def generate_data(inds, beta_norm, beta_dark, beta_light, beta_conf, manip_sup, 
 
         im_cv = cv2.resize(cv2.imread(f'./coco/train2017/{img["file_name"]}', cv2.IMREAD_COLOR), (im_size,im_size))
 
-        # OpenCV defaults to loading images as BGR not RGB
-        out_norm = np.asarray(cv2.cvtColor(   im_cv, cv2.COLOR_BGR2HLS ))  # a bitmap conversion BGR -> HLS
+        out_norm = np.asarray(cv2.cvtColor(   im_cv, cv2.COLOR_BGR2HLS ))  # a bitmap conversion 
         out_norm = out_norm / 255
 
 
@@ -256,6 +259,7 @@ def generate_data(inds, beta_norm, beta_dark, beta_light, beta_conf, manip_sup, 
         lightness_flattened = match_histograms(lightness_flattened, beta_norm.flatten())
         copied[:,:,1] = lightness_flattened.reshape((im_size,im_size))
         data_norm[i] = copied
+        manips_norm.append('norm')
 
         # Conf
         if ind in manip_conf:
@@ -264,8 +268,10 @@ def generate_data(inds, beta_norm, beta_dark, beta_light, beta_conf, manip_sup, 
             lightness_flattened_conf = match_histograms(lightness_flattened_conf, beta_conf.flatten())
             copied_conf[:,:,1] = lightness_flattened_conf.reshape((im_size,im_size))
             data_conf[i] = copied_conf 
+            manips_conf.append(manip_conf_str)
         else:
             data_conf[i] = data_norm[i]
+            manips_conf.append('norm')
 
         # Sup
         if ind in manip_sup:
@@ -274,12 +280,15 @@ def generate_data(inds, beta_norm, beta_dark, beta_light, beta_conf, manip_sup, 
             lightness_flattened_sup = copied_sup[:,:,1].reshape((im_size*im_size,))
             if ind in manip_sup[:int(len(manip_sup)/2)]:
                 lightness_flattened_sup = match_histograms(lightness_flattened_sup, beta_dark.flatten())
+                manips_sup.append('dark')
             else:
                 lightness_flattened_sup = match_histograms(lightness_flattened_sup, beta_light.flatten())
+                manips_sup.append('light')
             copied_sup[:,:,1] = lightness_flattened_sup.reshape((im_size,im_size))
             data_sup[i] = copied_sup
         else:
             data_sup[i] = data_norm[i]
+            manips_sup.append('norm')
 
         annotation_ids = coco_train.getAnnIds(imgIds=[ind], catIds=[], iscrowd=False)
         annotations = coco_train.loadAnns(annotation_ids)
@@ -301,7 +310,7 @@ def generate_data(inds, beta_norm, beta_dark, beta_light, beta_conf, manip_sup, 
         # labels[j] = i
         masks[i] = np.asarray(mask_im)[:,:,0]
     
-    return data_norm, data_conf, data_sup, masks
+    return data_norm, data_conf, data_sup, masks, manips_norm, manips_conf, manips_sup
 
 
 SEEDS = [12031212,1234,5845389,23423,343495,2024,3842834,23402304,482347247,1029237127]
@@ -339,10 +348,14 @@ for i in [int(sys.argv[1])]:
         data_conf = np.zeros((n_samples_split, im_size,im_size,3))
         data_sup = np.zeros((n_samples_split, im_size,im_size,3))
         masks = np.zeros((n_samples_split, im_size,im_size))
+
+        manips_norm = []
+        manips_conf = []
+        manips_sup = []
         
         half = int(len(split_results[0])*0.5)
         
-        manip = np.zeros((int(half*2),))
+        manip_inds = np.zeros((int(half*2),))
 
         labels = np.zeros((n_samples_split,))
         labels[n_per_class_split:] = 1
@@ -355,26 +368,32 @@ for i in [int(sys.argv[1])]:
 
             if j == 0:
                 beta_conf = beta_dark
+                manip_conf_str = 'dark'
             else:
                 beta_conf = beta_light
+                manip_conf_str = 'light'
 
-            data_norm_half, data_conf_half, data_sup_half, masks_half = generate_data(value[split_results[0]][:n_per_class_split], beta_norm, beta_dark, beta_light, beta_conf, manip_half, manip_half, key)
+            data_norm_half, data_conf_half, data_sup_half, masks_half, manips_norm_half, manips_conf_half, manips_sup_half = generate_data(value[split_results[0]][:n_per_class_split], beta_norm, beta_dark, beta_light, beta_conf, manip_half, manip_half, key, manip_conf_str=manip_conf_str)
             data_norm[j*n_per_class_split:(j+1)*n_per_class_split] = data_norm_half
             data_conf[j*n_per_class_split:(j+1)*n_per_class_split] = data_conf_half
             data_sup[j*n_per_class_split:(j+1)*n_per_class_split] = data_sup_half
             masks[j*n_per_class_split:(j+1)*n_per_class_split] = masks_half
-            manip[j*half:(j+1)*half] = manip_half
+            manip_inds[j*half:(j+1)*half] = manip_half
+
+            manips_norm.extend(manips_norm_half)
+            manips_conf.extend(manips_conf_half)
+            manips_sup.extend(manips_sup_half)
         
-        split_dataset = [(data_norm, data_conf, data_sup), masks]
+        # split_dataset = [(data_norm, data_conf, data_sup), masks]
         
         with open(f'./artifacts/coco_data_norm_{split}.pkl', 'wb') as f:
-            pkl.dump([data_norm, labels, masks, manip], f)
+            pkl.dump([data_norm, labels, masks, manip_inds, manips_norm], f)
 
         with open(f'./artifacts/coco_data_conf_{split}.pkl', 'wb') as f:
-            pkl.dump([data_conf, labels, masks, manip], f)
+            pkl.dump([data_conf, labels, masks, manip_inds, manips_conf], f)
 
         with open(f'./artifacts/coco_data_sup_{split}.pkl', 'wb') as f:
-            pkl.dump([data_sup, labels, masks, manip], f)
+            pkl.dump([data_sup, labels, masks, manip_inds, manips_sup], f)
     
 
 

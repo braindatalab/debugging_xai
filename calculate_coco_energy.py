@@ -86,7 +86,7 @@ def rescale_values(image,max_val,min_val):
 #     return np.sum(np.abs(attr[channel]))/np.sum(np.abs(attr))
 
 def channel_ratio(attr, channel):
-    return np.sum(np.abs(attr[:,channel]))/(np.sum(np.abs(attr)) - np.sum(np.abs(attr[:,channel])))
+    return np.mean(np.abs(attr[:,:,channel]))/np.mean(np.abs(attr))
 
 def lrp(data,model,target):
     # create a composite instance
@@ -185,42 +185,31 @@ def load_trained(path):
 
 
 energies = {}
-energies_rgb = {}
 
-for model in ['conf', 'sup', 'norm']:
+for model in ['norm', 'conf', 'sup']:
     energies[model] = {}
-    energies_rgb[model] = {}
-    for dataset in ['conf', 'sup', 'norm']:
+    for dataset in ['norm', 'dark', 'light']:
         energies[model][dataset] = []
-        energies_rgb[model][dataset] = []
         for i in range(3):
             energies[model][dataset].append({'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []})
-            energies_rgb[model][dataset].append({'deconv':[], 'int_grads':[], 'shap':[], 'lrp':[], 'lrp_ab': []})
 
 batch_size = 64
 
-# with open(f'coco_data_norm.pkl', 'rb') as f:
-#     [(_, _, _), (_, _, _), (x_test, y_test, masks_test_norm)] = pkl.load(f)
-
-
 
 with open(f'./artifacts/split_{split}_coco_data_norm_test.pkl', 'rb') as f:
-    [x_test_norm, y_test_norm, masks_test_norm, _] = pkl.load(f)
+    [x_test_norm, y_test_norm, masks_test_norm, _, _] = pkl.load(f)
 
 norm_loader = DataLoader(TensorDataset(torch.tensor(x_test_norm.transpose(0,3,1,2)), torch.tensor(y_test_norm)), batch_size=batch_size, shuffle=False, num_workers=4)
 
-with open(f'./artifacts/split_{split}_coco_data_conf_test.pkl', 'rb') as f:
-    [x_test_conf, y_test_conf, masks_test_conf, _] = pkl.load(f)
+with open(f'./artifacts/split_{split}_coco_data_dark_test.pkl', 'rb') as f:
+    [x_test_dark, y_test_dark, masks_test_dark, _, _] = pkl.load(f)
 
-# with open(f'coco_data_conf.pkl', 'rb') as f:
-#     [(_, _, _), (_, _, _), (x_test, y_test, masks_test_conf)] = pkl.load(f)
+dark_loader = DataLoader(TensorDataset(torch.tensor(x_test_dark.transpose(0,3,1,2)), torch.tensor(y_test_dark)), batch_size=batch_size, shuffle=False, num_workers=4)
 
-conf_loader = DataLoader(TensorDataset(torch.tensor(x_test_conf.transpose(0,3,1,2)), torch.tensor(y_test_conf)), batch_size=batch_size, shuffle=False, num_workers=4)
+with open(f'./artifacts/split_{split}_coco_data_light_test.pkl', 'rb') as f:
+    [x_test_light, y_test_light, masks_test_light, _, _] = pkl.load(f)
 
-with open(f'./artifacts/split_{split}_coco_data_sup_test.pkl', 'rb') as f:
-    [x_test_sup, y_test_sup, masks_test_sup, _] = pkl.load(f)
-
-sup_loader = DataLoader(TensorDataset(torch.tensor(x_test_sup.transpose(0,3,1,2)), torch.tensor(y_test_sup)), batch_size=batch_size, shuffle=False, num_workers=4)
+light_loader = DataLoader(TensorDataset(torch.tensor(x_test_light.transpose(0,3,1,2)), torch.tensor(y_test_light)), batch_size=batch_size, shuffle=False, num_workers=4)
 
 
 folder=os.getcwd()+'/images'
@@ -228,28 +217,22 @@ print(folder)
 t0=time.time()
 
 
-models = ['conf', 'sup', 'norm']
+datasets = ['norm', 'dark', 'light']
 atts = []
 xs = []
 
 # print(conf_loader[0][0].shape)
 
 energies_x = []
-energies_x_rgb = []
-
 
 for model_name, model_energies in energies.items():
-    # if model_name == 'norm':
-    #     model = load_trained(f'./models/coco_{model_name}_{model_ind}.pt').eval().to(DEVICE)
-    # else:
     model = load_trained(f'./models/coco_{model_name}_{split}_{model_ind}.pt').eval().to(DEVICE)
-    for i, test_loader in enumerate([conf_loader, sup_loader, norm_loader]):
+    for i, test_loader in enumerate([norm_loader, dark_loader, light_loader]):
         atts_loader = []
         xs_loader = []
-        print('calculating attributions for model', model_name, 'with test dataset', models[i])
+        print('calculating attributions for model', model_name, 'with test dataset', datasets[i])
 
         x_energies = [[], [], []]
-        x_energies_rgb = [[], [], []]
         for x_batch, test_labels in test_loader:      
 
             for j in range(x_batch.shape[0]):
@@ -263,45 +246,22 @@ for model_name, model_energies in energies.items():
                 lrp_att=LRP(model).attribute(data,target=target).cpu().detach().numpy().squeeze()
                 lrp_ab = lrp(data,model,target)
 
-                ig_rgb = np.transpose(cv2.cvtColor( (np.transpose(ig_att, (1,2,0))*255).astype(np.uint8)  , cv2.COLOR_HLS2RGB ), (2,0,1))
-                gradshap_rgb = np.transpose(cv2.cvtColor( (np.transpose(gradshap_att, (1,2,0))*255).astype(np.uint8)  , cv2.COLOR_HLS2RGB ), (2,0,1))
-                deconv_rgb = np.transpose(cv2.cvtColor( (np.transpose(deconv_att, (1,2,0))*255).astype(np.uint8)  , cv2.COLOR_HLS2RGB ), (2,0,1))
-                lrp_rgb = np.transpose(cv2.cvtColor( (np.transpose(lrp_att, (1,2,0))*255).astype(np.uint8)  , cv2.COLOR_HLS2RGB ), (2,0,1))
-                lrp_ab_rgb = np.transpose(cv2.cvtColor( (np.transpose(lrp_ab, (1,2,0))*255).astype(np.uint8)  , cv2.COLOR_HLS2RGB ), (2,0,1))
-
-                # only need to calculate x energies once
-                if model_name == 'conf':
-                    rgb = np.transpose(cv2.cvtColor( (np.transpose(data, (1,2,0))*255).astype(np.uint8)  , cv2.COLOR_HLS2RGB ), (2,0,1))
-
                 for channel_ind in range(3):
-                    # like above, only need to calculate x (data) energies once, as it is model independent
+                    # only need to calculate x (data) energies once, as it is model independent
                     if model_name == 'conf':
-                        x_energies[channel_ind].append(channel_ratio(data, channel_ind))
-                        x_energies_rgb[channel_ind].append(channel_ratio(rgb, channel_ind))
+                        x_energies[channel_ind].append(channel_ratio(x_batch[j].detach().numpy(), channel_ind))
 
-                    model_energies[models[i]][channel_ind]['deconv'].append(channel_ratio(deconv_att, channel_ind))
-                    model_energies[models[i]][channel_ind]['int_grads'].append(channel_ratio(ig_att, channel_ind))
-                    model_energies[models[i]][channel_ind]['shap'].append(channel_ratio(gradshap_att, channel_ind))
-                    model_energies[models[i]][channel_ind]['lrp'].append(channel_ratio(lrp_att, channel_ind))
-                    model_energies[models[i]][channel_ind]['lrp_ab'].append(channel_ratio(lrp_ab, channel_ind))
+                    model_energies[datasets[i]][channel_ind]['deconv'].append(channel_ratio(np.transpose(deconv_att, (1,2,0)), channel_ind))
+                    model_energies[datasets[i]][channel_ind]['int_grads'].append(channel_ratio(np.transpose(ig_att, (1,2,0)), channel_ind))
+                    model_energies[datasets[i]][channel_ind]['shap'].append(channel_ratio(np.transpose(gradshap_att, (1,2,0)), channel_ind))
+                    model_energies[datasets[i]][channel_ind]['lrp'].append(channel_ratio(np.transpose(lrp_att, (1,2,0)), channel_ind))
+                    model_energies[datasets[i]][channel_ind]['lrp_ab'].append(channel_ratio(np.transpose(lrp_ab, (1,2,0)), channel_ind))
 
-                    energies_rgb[model_name][models[i]][channel_ind]['deconv'].append(channel_ratio(deconv_rgb, channel_ind))
-                    energies_rgb[model_name][models[i]][channel_ind]['int_grads'].append(channel_ratio(ig_rgb, channel_ind))
-                    energies_rgb[model_name][models[i]][channel_ind]['shap'].append(channel_ratio(gradshap_rgb, channel_ind))
-                    energies_rgb[model_name][models[i]][channel_ind]['lrp'].append(channel_ratio(lrp_rgb, channel_ind))
-                    energies_rgb[model_name][models[i]][channel_ind]['lrp_ab'].append(channel_ratio(lrp_ab_rgb, channel_ind))
         energies_x.append(x_energies)
-        energies_x_rgb.append(x_energies_rgb)
 
-with open(f'energies_coco_{split}_{model_ind}.pickle', 'wb') as f:
+with open(f'./energies/energies_coco_{split}_{model_ind}.pickle', 'wb') as f:
     pkl.dump(energies, f)
 
-with open(f'energies_coco_{split}_{model_ind}_rgb.pickle', 'wb') as f:
-    pkl.dump(energies_rgb, f)
-
-    
-with open(f'energies_coco_x_{split}.pickle', 'wb') as f:
+with open(f'./energies/energies_coco_x_{split}.pickle', 'wb') as f:
     pkl.dump(energies_x, f)
 
-with open(f'energies_coco_x_rgb_{split}.pickle', 'wb') as f:
-    pkl.dump(energies_x_rgb, f)

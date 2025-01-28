@@ -26,7 +26,7 @@ def gray2rgb(gray):
     return rgb
     
 
-def rescale_values(image,max_val,min_val):
+def rescale_values(image,max_val=1,min_val=0):
     '''
     image - numpy array
     max_val/min_val - float
@@ -82,7 +82,7 @@ watermark_path_jpeg=folder+'watermark banner.jpg'
 image_size=(128,128)
 intensity=0.8 # opacity
 
-def add_watermark_variable(background_image_path,watermark_path, intensity_watermark,image_size,white_bool=1):
+def add_watermark_variable(background_image_path,watermark_path, intensity_watermark,image_size,white_bool=1, max_val=1, min_val=0):
     #watermark should be jpg with white background
     #lower intensity_watermark leads to a more transparent watermark in the final image (less contrast)
     # white_bool is a bool that indicated if the watermark to add is white or black
@@ -90,8 +90,7 @@ def add_watermark_variable(background_image_path,watermark_path, intensity_water
     background_image = Image.open(background_image_path)
     background_image = background_image.resize(image_size)
     background_image=np.array(background_image)
-    b=rescale_values(background_image,1,0)
-
+    b=rescale_values(background_image,max_val,min_val)
 
     wm_preprocessed = preprocess_watermark(watermark_path)
     wm_shape = wm_preprocessed.shape
@@ -110,14 +109,14 @@ def add_watermark_variable(background_image_path,watermark_path, intensity_water
         i_2=im*gr_p
         output_image=1-(i_2)
     else:
-        im=rescale_values(b,1,0)
+        im=rescale_values(b,max_val,min_val)
         gr_p=rescale_values(gr,1,1-intensity_watermark)
         output_image=im*gr_p
      
     #output_image=0
     return output_image, 1.0*(white<1)
 
-def save_images(wm_prev_cat, wm_prev_dog,cat_files,dog_files,watermark_path,image_size,intensity_watermark,output_path,white_bool):
+def save_images(wm_prev_cat, wm_prev_dog,cat_files,dog_files,watermark_path,image_size,intensity_watermark,output_path,white_bool=1, max_val=1, min_val=0):
     with_watermark_cat=np.random.choice(cat_files,size=int(len(cat_files)*wm_prev_cat), replace=False)
     with_watermark_dog=np.random.choice(dog_files,size=int(len(dog_files)*wm_prev_dog), replace=False)
 
@@ -136,18 +135,23 @@ def save_images(wm_prev_cat, wm_prev_dog,cat_files,dog_files,watermark_path,imag
     masks = np.zeros((len(cat_files) + len(dog_files), 128, 128))
     labels = np.zeros((len(cat_files) + len(dog_files), 1))
     labels[len(cat_files):] = 1
-    watermark_inds = [with_watermark_cat, with_watermark_dog]
+
+    watermark_inds = []
+    data_ind = 0 
 
     for i, image in enumerate(cat_files):
         if image in with_watermark_cat:
-            out_im, mask=add_watermark_variable(image,watermark_path,intensity_watermark,image_size,white_bool)
+            out_im, mask=add_watermark_variable(image,watermark_path,intensity_watermark,image_size,white_bool, max_val, min_val)
             n_water+=1
+            watermark_inds.append(data_ind)
         else:
-            out_im=Image.open(image)
+            out_im = Image.open(image)
             out_im = out_im.resize(image_size)
-            out_im=np.array(out_im)
+            out_im = rescale_values(np.array(out_im), max_val, min_val)
             n_no_water+=1
             mask = np.zeros((128,128))
+        data_ind += 1
+            
             
         #n=image.rfind('\\')
         # plt.imsave(output_path+image[n+1:],out_im)
@@ -159,14 +163,16 @@ def save_images(wm_prev_cat, wm_prev_dog,cat_files,dog_files,watermark_path,imag
 
     for i, image in enumerate(dog_files):
         if image in with_watermark_dog:
-            out_im, mask=add_watermark_variable(image,watermark_path,intensity_watermark,image_size,white_bool)
+            out_im, mask=add_watermark_variable(image,watermark_path,intensity_watermark,image_size,white_bool, max_val, min_val)
             n_water_dog+=1
+            watermark_inds.append(data_ind)
         else:
-            out_im=Image.open(image)
+            out_im = Image.open(image)
             out_im = out_im.resize(image_size)
-            out_im=np.array(out_im)
+            out_im = rescale_values(np.array(out_im), max_val, min_val)
             n_no_water_dog+=1
             mask = np.zeros((128,128))
+        data_ind += 1
             
         #n=image.rfind('\\')
         # plt.imsave(output_path+image[n+1:],out_im)
@@ -185,6 +191,14 @@ def save_images(wm_prev_cat, wm_prev_dog,cat_files,dog_files,watermark_path,imag
 
 SEEDS = [12031212,1234,5845389,23423,343495,2024,3842834,23402304,482347247,1029237127]
 N = 6000 # per class
+
+rescaled_string = ''
+rescaled_bool = False
+if len(sys.argv) > 2:
+    if sys.argv[2] == 'rescaled':
+        rescaled_string = '_rescaled'
+        rescaled_bool = True
+
 
 for i in [int(sys.argv[1])]:
     print("Generating data for split", i)
@@ -212,32 +226,32 @@ for i in [int(sys.argv[1])]:
     cat_names_train = list(np.array(cat_paths)[train_inds])
     cat_names_val = list(np.array(cat_paths)[val_inds])
     cat_names_test = list(np.array(cat_paths)[test_inds])
-    \
+    
     dog_names_train = list(np.array(dog_paths)[train_inds])
     dog_names_val = list(np.array(dog_paths)[val_inds])
     dog_names_test = list(np.array(dog_paths)[test_inds])
 
     output_path=f'./artifacts/split_{i}_suppressor_variable_'
 
-    save_images(0.5, 0.5, cat_names_train, dog_names_train, watermark_path_jpeg,image_size,intensity,output_path+'train',1)
-    save_images(0.5, 0.5, cat_names_val, dog_names_val, watermark_path_jpeg,image_size,intensity,output_path+'val',1)
-    save_images(0.5, 0.5, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+'test',1)
+    save_images(0.5, 0.5, cat_names_train, dog_names_train, watermark_path_jpeg,image_size,intensity,output_path+f'train{rescaled_string}',1, rescaled_bool)
+    save_images(0.5, 0.5, cat_names_val, dog_names_val, watermark_path_jpeg,image_size,intensity,output_path+f'val{rescaled_string}',1, rescaled_bool)
+    save_images(0.5, 0.5, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+f'test{rescaled_string}',1, rescaled_bool)
 
 
     output_path=f'./artifacts/split_{i}_confounder_variable_'
     
-    save_images(0.2, 0.8, cat_names_train, dog_names_train, watermark_path_jpeg,image_size,intensity,output_path+'train',1)
-    save_images(0.2, 0.8, cat_names_val, dog_names_val, watermark_path_jpeg,image_size,intensity,output_path+'val',1)
-    save_images(0.2, 0.8, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+'test',1)
+    save_images(0.2, 0.8, cat_names_train, dog_names_train, watermark_path_jpeg,image_size,intensity,output_path+f'train{rescaled_string}',1, rescaled_bool)
+    save_images(0.2, 0.8, cat_names_val, dog_names_val, watermark_path_jpeg,image_size,intensity,output_path+f'val{rescaled_string}',1, rescaled_bool)
+    save_images(0.2, 0.8, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+f'test{rescaled_string}',1, rescaled_bool)
     print()
     
     output_path=f'./artifacts/split_{i}_no_watermark_variable_'
     
-    save_images(0, 0, cat_names_train,dog_names_train, watermark_path_jpeg,image_size,intensity,output_path+'train',1)
-    save_images(0, 0, cat_names_val, dog_names_val, watermark_path_jpeg,image_size,intensity,output_path+'val',1)
-    save_images(0, 0, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+'test',1)
+    save_images(0, 0, cat_names_train,dog_names_train, watermark_path_jpeg,image_size,intensity,output_path+f'train{rescaled_string}',1, rescaled_bool)
+    save_images(0, 0, cat_names_val, dog_names_val, watermark_path_jpeg,image_size,intensity,output_path+f'val{rescaled_string}',1, rescaled_bool)
+    save_images(0, 0, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+f'test{rescaled_string}',1, rescaled_bool)
     print()
 
     output_path=f'./artifacts/split_{i}_all_watermark_variable_'
-    save_images(1, 1, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+'test',1)
+    save_images(1, 1, cat_names_test, dog_names_test, watermark_path_jpeg,image_size,intensity,output_path+f'test{rescaled_string}',1, rescaled_bool)
     print()
