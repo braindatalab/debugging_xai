@@ -1,98 +1,122 @@
 # Debugging XAI - Can XAI methods detect confounding variables?
 
-## 1. Setup
-Install packages from the ``environment.yml`` file - we use conda, but pipenv or venv will work too.
+This repository contains the code and data pipelines for our Nature Communications submission. It evaluates the ability of various Explainable AI (XAI) methods to detect confounding variables (watermarks and image lightness) in trained models.
 
-``
+## 1. System Requirements
+
+### Hardware requirements
+The scripts require a standard computer with enough RAM to support the data processing operations. For optimal performance, we recommend a machine with the following specs:
+* RAM: 16+ GB
+* CPU: 4+ cores, 3.3+ GHz/core
+* GPU: An NVIDIA GPU with CUDA support is highly recommended for model training, but not strictly required for the demo.
+
+### Software requirements
+#### OS Requirements
+This software is supported for macOS and Linux. The software has been tested on the following systems:
+* macOS: Sequoia (15.7.3)
+* Linux: Ubuntu 24.04
+
+#### Python Dependencies
+The software requires **Python 3.11.8**. All required packages and their versions are detailed in the provided `environment.yml` file. Main dependencies include:
+* `torch`, `torchvision`, `torchmetrics`
+* `captum`, `zennit`
+* `scikit-learn`, `scikit-image`, `pot`
+* `matplotlib`, `seaborn`, `pandas`, `opencv-python`
+
+## 2. Installation Guide
+
+It is recommended to install the dependencies using `conda` (or `mamba`).
+
+1. Clone the repository:
+```bash
+git clone https://github.com/braindatalab/debugging_xai.git
+cd debugging_xai
+```
+
+2. Create and activate the conda environment:
+```bash
 conda env create --name envname --file=environment.yml
-``
+conda activate envname
+```
 
-## 2. Data generation
-Currently the data can be downloaded internally in the correct structure on MS Teams, or also from [Kaggle](https://www.kaggle.com/datasets/tongpython/cat-and-dog), albeit in a different file structure (we combine all of the training and testing images from the original source into the structure ./images/dog/ or ./images/cat/ and do the train/val/test splits afterwards). 
+**Typical install time:** 5-10 minutes on a normal desktop computer.
 
-To generate the data for experiments, use the following scripts:
+## 3. Demo
 
-### Watermark experiments
-``
-python generate_watermarks.py {split} {rescaled} 
-``
+To test the software functionality, we provide a demo using a small, simulated sample dataset located in `demo/`
 
-where ``split`` is an integer [0..10] describing which 'shuffling' of the data should be used for generation (via random seeds). ``rescaled`` is a string, either ``'rescaled'`` to rescale the data to the range ``[-1,1]`` or blank/anything else to use the default min-max scaling to the range [0,1].
+To run the complete pipeline on the demo data, we have provided an automated script that copies a small sample of images (if you have the full dataset locally) or expects 20 sample images to be placed in `demo/images/cat` and `demo/images/dog`. It will then run data generation, model training, and evaluation automatically.
 
-For variable-position watermarks, use:
+Run the demo script from the root of the repository:
 
-``
-python generate_watermarks_variable.py {split} {rescaled} 
-``
+```bash
+./demo/setup_and_run.sh
+```
 
-where the same parameterisation applies as above.
+Alternatively, you can run the steps manually as they are laid out inside `demo/setup_and_run.sh`.
+
+**Expected output:** 
+The pipeline will output:
+* Generated artifacts saved to `demo/artifacts/`
+* Trained model weights saved to `demo/models/`
+* The final explanation metrics (energy scores, etc.) saved to `demo/results/`
+
+**Expected run time for demo:** ~5-10 minutes on a normal desktop computer.
+
+## 4. Instructions for Use
+
+To run the experiments on the full datasets, follow the instructions below. 
+
+### Data Preparation
+The complete datasets are required for the full experiments. 
+* **Cats and Dogs:** Available internally on MS Teams, or from [Kaggle](https://www.kaggle.com/datasets/tongpython/cat-and-dog) (Combine training and testing images into `./images/dog/` or `./images/cat/`).
+* **COCO 2017:** Requires the [COCO 2017 train and val data as well as annotations](https://cocodataset.org/#download) placed in the directory structure: `project/coco/annotations/` and `project/coco/train2017/`.
+
+### Watermark Experiments
+
+**1. Generation**
+Generate the data for experiments using:
+```bash
+python -m watermarks.generate_watermarks --split-index {split} --scale {zero_one|neg_one_one} 
+```
+* `{split}`: Integer [0..9] defining the random seed data shuffle.
+* `--scale`: `'neg_one_one'` to scale data to `[-1,1]`, or `'zero_one'` to use standard `[0,1]` min-max scaling.
+
+*For variable-position watermarks, use:* `--position variable` flag in the same script.
+
+**2. Training**
+```bash
+python -m watermarks.train_watermarks_server --split-index {split} --base {all|confounder|suppressor|no_watermark} 
+```
+The `--base` argument refers to whether to train `all` three model variants, or just one specific type. 
+
+**3. Evaluation**
+All XAI method execution and resulting energy metric calculations:
+```bash
+python -m watermarks.calculate_energy --split-index {split} --seed-index {seed_ind} --position {fixed|variable}  
+```
+* `{seed_ind}`: Integer [0..9] defining which trained model seed to use.
+* `--position`: Use variable-position watermark data if set.
 
 ### COCO Lightness Experiments
-Requires the [COCO 2017 train and val data as well as annotations](https://cocodataset.org/#download) placed in the directory structure as 
 
+**1. Generation**
+```bash
+python -m coco.generate_coco_splits {split} {rescaled} 
 ```
-project  
-│
-└───coco
-│   │
-│   └─── annotations
-│       │   captions_train2017.json
-│       │   ...
-│   └─── train2017
-│       │   000000000009.jpg
-│       │   ...
-│   └─── val2017
-│       │   000000000139.jpg
-│       │   ...
+If `{rescaled}` is specified to `rescaled`, it applies `[-1,1]` scaling to the HLS lightness channel only.
 
+**2. Training**
+```bash
+python -m coco.coco_train_server_splits {split} {conf|sup|norm} 
+```
+Where `conf` trains the confounder model, `sup` the suppressor, and `norm` the normalised brightness model.
+
+**3. Evaluation**
+```bash
+python -m coco.calculate_coco_energy {split} {model_ind}
 ```
 
-Then, run the generation script as:
+## License
 
-``
-python generate_coco_splits.py {split} {rescaled} 
-``
-
-Where the same parameterisation for split (shuffling of the data via random seeds) and rescaling apply. Here, the rescaling to [-1,1] (if specified) is done to the HLS lightness channel only.
-
-## 3. Model Training
-
-### Watermark experiments 
-Currently this is only pushed to git for the non-rescaled variants, but this will be updated in due course.
-
-``
-python train_server_splits.py {split} {all|confounder|suppressor|no_watermark} 
-``
-
-or 
-
-``
-python train_server_variable.py {split} {all|confounder|suppressor|no_watermark} 
-``
-
-where the first argument is, as before, the split of data to train over, and the second argument refers to whether to train ``all`` three model variants, or just one of ``confounder``, ``suppressor``, or ``no_watermark``. ``train_server_variable.py`` is for the variable-position watermark, though in the future this should be unified to one script.
-
-### COCO lightness experiments
-
-``
-python coco_train_server_splits.py {split} {conf|sup|norm} 
-``
-
-where ``conf`` is for training the confounder model, ``sup`` for the suppressor, or ``norm`` for the normalised brightness model.
-
-## Experiments and results
-All XAI method execution and resulting energy metric calculations are run here.
-
-### Watermark experiments
-Currently this is only pushed to git for the non-rescaled variants, but this will be updated in due course.
-
-``
-python calculate_watermarks_energy.py {split} {model_ind} {variable}  
-``
-Where split is defined as before, the ``model_ind`` is also an integer [0..4] for which trained model to use, and ``variable`` makes use of the variable-position watermark data if set.
-
-### COCO lightness experiments
-
-``
-python calculate_coco_energy.py {split} {model_ind}
-``
+This project is licensed under the MIT License - see the `LICENSE` file for details.
