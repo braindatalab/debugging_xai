@@ -1,11 +1,19 @@
 .DS_Store
-images/
 
+# 1. Ignore the root images folder specifically
+/images/
+
+# 2. Ignore all image files globally
 *.png
 *.jpg
 *.pickle
 *.pkl
 *.pt
+
+# 3. Add exceptions for the demo folder
+!demo/images/
+!demo/images/**/*.jpg
+!demo/images/**/*.png
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
