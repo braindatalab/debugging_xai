@@ -1,6 +1,6 @@
-# Debugging XAI - Can XAI methods detect confounding variables?
+# Feature salience - not task-informativeness - drives machine learning model explanations
 
-This repository contains the code and data pipelines for our Nature Communications submission. It evaluates the ability of various Explainable AI (XAI) methods to detect confounding variables (watermarks and image lightness) in trained models.
+This repository contains the code and data pipelines for our project, evaluating the ability of various Explainable AI (XAI) methods to detect and distinguish types of variables (confounding effects, suppressors, and outlying salient features), through watermarks and image lightness manipulations. The paper is currently under review, but a pre-print is available on [arXiv](https://arxiv.org/abs/2602.09238)
 
 ## 1. System Requirements
 
